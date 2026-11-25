@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -46,7 +49,15 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	defer file.Close()
-	mediaType := header.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(header.Header.Get("Content-Type"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid Content-Type", err)
+		return
+	}
+	if mediaType != "image/jpeg" && mediaType != "image/png" {
+		respondWithError(w, http.StatusBadRequest, "Invalid file type", err)
+		return
+	}
 	metaData, err := cfg.db.GetVideo(videoID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Unable to fetch video", err)
@@ -61,7 +72,10 @@ func (cfg *apiConfig) handlerUploadThumbnail(w http.ResponseWriter, r *http.Requ
 		respondWithError(w, http.StatusInternalServerError, "Malformed header", nil)
 		return
 	}
-	fileName := fmt.Sprintf("%s.%s", videoID, fileExt[1])
+	key := make([]byte, 32)
+	rand.Read(key)
+	fileString := base64.RawURLEncoding.EncodeToString(key)
+	fileName := fmt.Sprintf("%s.%s", fileString, fileExt[1])
 	thumbPath := filepath.Join(cfg.assetsRoot, fileName)
 	thumbFile, err := os.Create(thumbPath)
 	if err != nil {
